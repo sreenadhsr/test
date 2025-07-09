@@ -1,0 +1,10 @@
+graph TD
+    A[Client] -->|HTTPS JSON Request| B[APIGEE Gateway]
+    B -->|Proxy Request| C[AVS API Service]
+    C -->|Fetch Entitlements| D[Entitlement Service]
+    C -->|Validate Routing Number| E[GUS Service API]
+    C -->|Fraud Check| F[Fraud Services API]
+    C -->|Log Audit Data| G[Audit Logging Service]
+    C -->|Response| B
+    B -->|Response with Trace ID| A
+    H[(Database)] -->|Store Metadata| C
