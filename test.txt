@@ -7,30 +7,36 @@ sequenceDiagram
     participant Fraud as Fraud Services API
     participant Audit as Audit Logging Service
 
-    Client->>APIGEE: Send JSON Request (Company ID, User ID, Payload)
-    APIGEE->>AVS_API: Forward Request with Headers
-    AVS_API->>Entitlement: Validate Company & User Entitlements
-    Entitlement-->>AVS_API: Entitlement Response
-    alt Entitlement Failure
-        AVS_API-->>APIGEE: Error Response (Trace ID)
+    Client->>APIGEE: Send JSON Request (/api/v1/validate, Company ID, User ID)
+    APIGEE->>AVS_API: Forward Request to v1 Endpoint
+    AVS_API->>AVS_API: Parse Version (v1)
+    alt Invalid Version
+        AVS_API-->>APIGEE: Error Response (Invalid Version, Trace ID)
         APIGEE-->>Client: Error Response (Trace ID)
-    else Entitlement Success
-        AVS_API->>AVS_API: Validate Request Payload
-        alt Payload Invalid
+    else Valid Version
+        AVS_API->>Entitlement: Validate Company & User Entitlements
+        Entitlement-->>AVS_API: Entitlement Response
+        alt Entitlement Failure
             AVS_API-->>APIGEE: Error Response (Trace ID)
             APIGEE-->>Client: Error Response (Trace ID)
-        else Payload Valid
-            AVS_API->>GUS: Validate Routing Number
-            GUS-->>AVS_API: Validation Result
-            alt Routing Number Invalid
+        else Entitlement Success
+            AVS_API->>AVS_API: Validate Request Payload (v1 Schema)
+            alt Payload Invalid
                 AVS_API-->>APIGEE: Error Response (Trace ID)
                 APIGEE-->>Client: Error Response (Trace ID)
-            else Routing Number Valid
-                AVS_API->>Fraud: Perform Fraud Check
-                Fraud-->>AVS_API: Fraud Validation Result
-                AVS_API->>Audit: Log Request/Response Details
-                AVS_API-->>APIGEE: Success Response
-                APIGEE-->>Client: Success Response
+            else Payload Valid
+                AVS_API->>GUS: Validate Routing Number
+                GUS-->>AVS_API: Validation Result
+                alt Routing Number Invalid
+                    AVS_API-->>APIGEE: Error Response (Trace ID)
+                    APIGEE-->>Client: Error Response (Trace ID)
+                else Routing Number Valid
+                    AVS_API->>Fraud: Perform Fraud Check
+                    Fraud-->>AVS_API: Fraud Validation Result
+                    AVS_API->>Audit: Log Request/Response (v1 Details, Trace ID)
+                    AVS_API-->>APIGEE: Success Response
+                    APIGEE-->>Client: Success Response
+                end
             end
         end
     end
