@@ -40,3 +40,20 @@ sequenceDiagram
             end
         end
     end
+
+
+
+Account Validation Service API
+1.	Accepts JSON Data
+2.	Get Company ID and User ID from the request header
+3.	Validate the entitlements of the Company and the User
+        a. Return error response if the user doesn’t have AVS product entitlement
+4.	Validate request payload
+5.	Validate the Routing number
+        a.	Call the appropriate GUS service API to validate the Routing number (ABA, SWIFT, CHIPS)
+        b.	Provide an appropriate error message if the Routing number validation fails
+6.	Call the Fraud Services API and get the validation result
+7.	Log the details for audit purposes
+8.	Return the API response
+The API will be onboarded to APIGEE and available for subscription by the clients.
+In the event of an error, the API should return a Trace ID.
