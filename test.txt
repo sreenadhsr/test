@@ -118,3 +118,66 @@ sequenceDiagram
 5) Target server calls another internal passthrough service
 6) Pass through service calls the External API to get the validation result
 7) Any error propagates to the client aand is lso logged to Splunk
+
+graph LR
+    subgraph ClientLane [Client Application]
+        Client[Client]
+    end
+    subgraph APIGEELane [APIGEE Gateway]
+        APIGEE[APIGEE]
+    end
+    subgraph AVSLane [AVS Microservice]
+        AVS[AVS Microservice]
+    end
+    subgraph PassthroughLane [Internal Passthrough Service]
+        Passthrough[Passthrough Service]
+    end
+    subgraph ExternalLane [External API]
+        External[External API]
+    end
+    subgraph SplunkLane [Splunk Logging]
+        Splunk[Splunk]
+    end
+
+    %% Step 1: Client registers with APIGEE
+    Client-->|1. Register for API access|APIGEE
+    APIGEE-->|API Key/OAuth Credentials|Client
+
+    %% Step 2: Producer creates proxies (noted, not shown as interaction)
+    APIGEE:::note-->APIGEE: 2. Producer creates proxies for /api/v1/validate
+
+    %% Step 3: Client sends request, APIGEE validates schema
+    Client-->|3. POST /api/v1/validate (JSON, Company-ID, User-ID)|APIGEE
+    APIGEE-->|Validate schema|APIGEE
+    APIGEE-->|Invalid Schema: Error (RFC 7807, instance)|Splunk
+    APIGEE-->|Invalid Schema: Error (RFC 7807, instance)|Client
+
+    %% Step 4: Route to AVS based on URI version
+    APIGEE-->|4. Forward to /v1/validate|AVS
+    AVS-->|Invalid Version: Error (RFC 7807, instance)|Splunk
+    AVS-->|Invalid Version: Error (RFC 7807, instance)|APIGEE
+    APIGEE-->|Invalid Version: Error (RFC 7807, instance)|Client
+
+    %% Step 5: AVS calls Passthrough Service
+    AVS-->|5. Forward validation request|Passthrough
+
+    %% Step 6: Passthrough calls External API
+    Passthrough-->|6. Call External API (e.g., GUS/Fraud)|External
+    External-->|Validation Result|Passthrough
+
+    %% Step 7: Error propagation and logging
+    Passthrough-->|External Error: Error (RFC 7807, instance)|Splunk
+    Passthrough-->|External Error: Error (RFC 7807, instance)|AVS
+    AVS-->|External Error: Error (RFC 7807, instance)|APIGEE
+    APIGEE-->|External Error: Error (RFC 7807, instance)|Client
+
+    %% Success path
+    Passthrough-->|Success: Validation Result|AVS
+    AVS-->|Log request/response (v1, instance)|Splunk
+    AVS-->|Success Response|APIGEE
+    APIGEE-->|Success Response|Client
+
+    %% Styling to mimic Visio swimlanes
+    classDef lane fill:#f0f8ff,stroke:#333,stroke-width:2px
+    classDef note fill:#fffacd,stroke:#333,stroke-width:1px
+    class ClientLane,APIGEELane,AVSLane,PassthroughLane,ExternalLane,SplunkLane lane
