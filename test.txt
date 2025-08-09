@@ -57,3 +57,64 @@ Account Validation Service API
 8.	Return the API response
 The API will be onboarded to APIGEE and available for subscription by the clients.
 In the event of an error, the API should return a Trace ID.
+
+----------
+
+```mermaid
+sequenceDiagram
+    participant Client as Client Application
+    participant APIGEE as APIGEE Gateway
+    participant AVS as AVS Microservice
+    participant Passthrough as Internal Passthrough Service
+    participant External as External API
+    participant Splunk as Splunk Logging
+
+    %% Step 1: Client registers with APIGEE
+    note over Client,APIGEE: Client registers with APIGEE to obtain API key or OAuth credentials
+    Client->>APIGEE: Register for API access
+    APIGEE-->>Client: API Key/OAuth Credentials
+
+    %% Step 2: Producer creates proxies (assumed to be pre-configured)
+    note over APIGEE: Producer creates proxies for /api/v1/validate
+
+    %% Step 3: Client sends request, APIGEE validates schema
+    Client->>APIGEE: POST /api/v1/validate (JSON, Company-ID, User-ID)
+    APIGEE->>APIGEE: Perform schema validation
+    alt Invalid Schema
+        APIGEE->>Splunk: Log error (RFC 7807, instance)
+        APIGEE-->>Client: Error Response (RFC 7807, instance)
+    else Valid Schema
+        %% Step 4: APIGEE routes to AVS Microservice based on URI version
+        APIGEE->>AVS: Forward Request to /v1/validate
+        alt Invalid Version
+            AVS->>Splunk: Log error (RFC 7807, instance)
+            AVS-->>APIGEE: Error Response (RFC 7807, instance)
+            APIGEE-->>Client: Error Response (RFC 7807, instance)
+        else Valid Version
+            %% Step 5: AVS Microservice calls Passthrough Service
+            AVS->>Passthrough: Forward validation request
+            %% Step 6: Passthrough Service calls External API
+            Passthrough->>External: Call External API (e.g., GUS/Fraud)
+            External-->>Passthrough: Validation Result
+            alt External API Error
+                Passthrough->>Splunk: Log error (RFC 7807, instance)
+                Passthrough-->>AVS: Error Response (RFC 7807, instance)
+                AVS-->>APIGEE: Error Response (RFC 7807, instance)
+                APIGEE-->>Client: Error Response (RFC 7807, instance)
+            else Success
+                Passthrough-->>AVS: Validation Result
+                AVS->>Splunk: Log request/response (v1, instance)
+                AVS-->>APIGEE: Success Response
+                APIGEE-->>Client: Success Response
+            end
+        end
+    end
+```
+
+1)Client Application registers with Apigee to consume the API
+2) Producer creates proxies within Apigee 
+3) Apigee performs basic schema validations
+4) Proxy transfers the request to the appropriate target server (a micro service) based on URI version
+5) Target server calls another internal passthrough service
+6) Pass through service calls the External API to get the validation result
+7) Any error propagates to the client aand is lso logged to Splunk
